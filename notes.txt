@@ -1,0 +1,159 @@
+import os
+import logging
+import requests
+from dotenv import load_dotenv
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+
+# 🔑 Загружаем токены из .env
+load_dotenv()
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+WEB_APP_URL = "https://1511-147-30-75-52.ngrok-free.app"
+
+# Проверка наличия токена
+if not TOKEN:
+    raise ValueError("❌ TELEGRAM_BOT_TOKEN не найден в .env!")
+
+# 📝 Логирование
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+
+# 🔹 Главное меню (выбор роли)
+role_keyboard = ReplyKeyboardMarkup([["📚 Студент", "🎓 Преподаватель"]], one_time_keyboard=True, resize_keyboard=True)
+
+# 🔹 Меню для студентов
+student_keyboard = ReplyKeyboardMarkup(
+    [["📅 Расписание", "📖 Курсы"], ["🏛 Подать запрос в деканат", "📩 Мои письма"], ["🔙 Назад"]], resize_keyboard=True
+)
+
+# 🔹 Меню для преподавателей
+teacher_keyboard = ReplyKeyboardMarkup(
+    [["📝 Проверка работ", "👨‍🏫 Список групп"], ["📩 Сообщения от студентов"], ["🔙 Назад"]], resize_keyboard=True
+)
+
+# 🌐 URL Flask-сервера
+FLASK_URL = "http://localhost:5000"  # Заменить на публичный URL, если нужно
+
+
+# 🔹 Команда /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text("Привет! Вы студент или преподаватель?", reply_markup=role_keyboard)
+
+
+# 🔹 Авторизация через Microsoft
+async def login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Отправляет кнопку для входа через Web App."""
+    user_id = update.message.from_user.id  # Получаем user_id
+    login_url = f"{WEB_APP_URL}/login?user_id={user_id}"  # Добавляем user_id
+
+    keyboard = [[InlineKeyboardButton("🔑 Войти через Microsoft", url=login_url)]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text("Для входа используйте кнопку ниже:", reply_markup=reply_markup)
+
+
+# 🔹 Получение профиля
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает профиль пользователя, запрашивая его у Flask-сервера."""
+    response = requests.get(f"{FLASK_URL}/profile", cookies=context.user_data.get("session_cookies", {}))
+
+    if response.status_code == 200:
+        await update.message.reply_text(response.text)
+    elif response.status_code == 401:
+        await update.message.reply_text("⚠️ Вы не авторизованы. Введите /login для входа.")
+    else:
+        await update.message.reply_text("❌ Ошибка сервера. Попробуйте позже.")
+
+
+# 🔹 Получение писем
+async def get_mails(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Получает последние письма и отправляет их в Telegram."""
+    try:
+        response = requests.get(f"{FLASK_URL}/mails")
+        if response.status_code != 200:
+            await update.message.reply_text("❌ Ошибка при получении писем.")
+            return
+
+        emails = response.json()
+        if not emails:
+            await update.message.reply_text("📭 У вас нет новых писем.")
+            return
+
+        result = "📩 *Последние письма:*\n\n"
+        for email in emails:
+            result += f"✉️ *От:* {email['from']}\n📌 *Тема:* {email['subject']}\n\n"
+
+        await update.message.reply_text(result, parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Ошибка: {str(e)}")
+
+
+# 🔹 Обработчик выбора роли
+async def choose_role(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_choice = update.message.text
+
+    if user_choice == "📚 Студент":
+        context.user_data["role"] = "student"
+        await update.message.reply_text("Выбрано: Студент. Чем могу помочь?", reply_markup=student_keyboard)
+
+    elif user_choice == "🎓 Преподаватель":
+        context.user_data["role"] = "teacher"
+        await update.message.reply_text("Выбрано: Преподаватель. Чем могу помочь?", reply_markup=teacher_keyboard)
+
+    elif user_choice == "🔙 Назад":
+        context.user_data["role"] = None
+        await update.message.reply_text("Выберите свою роль:", reply_markup=role_keyboard)
+
+    else:
+        await process_action(update, context)
+
+
+# 🔹 Обработчик действий в меню
+async def process_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    role = context.user_data.get("role")
+
+    if not role:
+        await update.message.reply_text("⚠️ Сначала выберите роль с помощью /start.")
+        return
+
+    student_actions = {
+        "📅 Расписание": "📌 Понедельник: Математика\n📌 Вторник: Программирование",
+        "📖 Курсы": "Ваши курсы: \n1️⃣ Алгоритмы\n2️⃣ Машинное обучение",
+        "🏛 Подать запрос в деканат": "Введите ваш запрос, и я отправлю его в деканат.",
+        "📩 Мои письма": await get_mails(update, context),  # Добавлена кнопка для писем
+    }
+
+    teacher_actions = {
+        "📝 Проверка работ": "Выберите работу для проверки (в будущем можно подключить файлы).",
+        "👨‍🏫 Список групп": "Ваши группы: \n👥 ИС-2101\n👥 ИС-2203",
+        "📩 Сообщения от студентов": "Нет новых сообщений от студентов.",
+    }
+
+    message_text = update.message.text
+    response_text = student_actions.get(message_text) if role == "student" else teacher_actions.get(message_text)
+
+    if response_text:
+        await update.message.reply_text(response_text)
+    else:
+        await update.message.reply_text("Неизвестная команда. Выберите из меню.")
+
+
+# 🔥 Запуск бота
+def main():
+    application = Application.builder().token(TOKEN).build()
+
+    # ✅ Добавляем обработчики команд
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("login", login))
+    application.add_handler(CommandHandler("profile", profile))
+    application.add_handler(CommandHandler("mails", get_mails))  # Обработчик команды /mails
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, choose_role))
+
+    # 🚀 Запускаем бота
+    application.run_polling()
+
+
+if __name__ == "__main__":
+    main()

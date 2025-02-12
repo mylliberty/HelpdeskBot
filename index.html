@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Авторизация</title>
+    <script>
+        window.onload = function() {
+            // 🔄 Автоматический редирект на Microsoft Login
+            window.location.href = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=ВАШ_CLIENT_ID&response_type=code&redirect_uri=ВАШ_REDIRECT_URI&scope=User.Read";
+        };
+    </script>
+</head>
+<body>
+    <h2>Перенаправляем на Microsoft Login...</h2>
+</body>
+</html>
