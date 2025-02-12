@@ -8,13 +8,13 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # Загружаем токен
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-WEB_APP_URL = "https://99f5-147-30-75-52.ngrok-free.app"
+WEB_APP_URL = "https://helpdeskbot-production.up.railway.app"  # Обновленный URL Railway
 
 # Проверка наличия токена
 if not TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не найден в .env!")
 
-FLASK_URL = "https://c297-147-30-75-52.ngrok-free.app"
+FLASK_URL = "https://helpdeskbot-production.up.railway.app"  # Обновленный URL Railway
 
 # Логирование
 logging.basicConfig(
@@ -53,7 +53,6 @@ async def authenticate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     await update.message.reply_text(f"Добро пожаловать, {role}! Ваш email: {user_email}")
 
-
 # Получение писем
 async def get_mails(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Получает последние письма и отправляет их в Telegram."""
@@ -91,6 +90,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
